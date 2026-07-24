@@ -25,9 +25,12 @@ struct HyperglyphApp: App {
 }
 
 /// Reactive menu bar label: trackpad glyph normally, flashes the recognized shape for ~1s,
-/// dimmed when the master switch is off.
+/// dimmed when the master switch is off. Also the always-alive view that donates
+/// `openWindow` to the coordinator so AppKit relaunch events can summon the window.
 struct MenuBarLabel: View {
     var state: AppState
+
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Group {
@@ -39,6 +42,12 @@ struct MenuBarLabel: View {
             }
         }
         .opacity(state.isEnabled ? 1.0 : 0.4)
+        .onAppear {
+            AppCoordinator.shared.openMainWindow = {
+                openWindow(id: "main")
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
     }
 }
 
@@ -53,5 +62,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         AppCoordinator.shared.stop()
+    }
+
+    /// Launching the already-running app (Spotlight, Raycast, Dock, `open`)
+    /// summons the settings window instead of doing nothing.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        AppCoordinator.shared.openMainWindow?()
+        return false
+    }
+
+    /// Closing the window never quits — the app keeps living in the menu bar.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
     }
 }

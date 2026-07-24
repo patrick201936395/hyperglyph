@@ -40,6 +40,12 @@ public final class TapZoneDetector {
     /// Seconds to wait for another tap before finalizing a multi-tap sequence.
     public var multiTapWindow: Double = 0.35
 
+    /// Corner zone width as a fraction of the trackpad.
+    public var cornerWidth: Double = 0.30
+
+    /// Corner zone height as a fraction of the trackpad.
+    public var cornerHeight: Double = 0.40
+
     public init() {}
 
     /// Marks "a physical click just happened": any touch session overlapping this
@@ -215,12 +221,13 @@ public final class TapZoneDetector {
     // MARK: - Zone geometry
 
     /// Maps a start position (normalized, y-up) to its tap zone. Corners are
-    /// 30% x 40% rectangles and take precedence over the halves.
+    /// `cornerWidth` × `cornerHeight` rectangles (defaults 30% × 40%) and take
+    /// precedence over the halves.
     private func zone(forX x: Double, y: Double) -> TapZone {
-        if x < 0.30 && y > 0.60 { return .topLeftCorner }
-        if x > 0.70 && y > 0.60 { return .topRightCorner }
-        if x < 0.30 && y < 0.40 { return .bottomLeftCorner }
-        if x > 0.70 && y < 0.40 { return .bottomRightCorner }
+        if x < cornerWidth && y > 1 - cornerHeight { return .topLeftCorner }
+        if x > 1 - cornerWidth && y > 1 - cornerHeight { return .topRightCorner }
+        if x < cornerWidth && y < cornerHeight { return .bottomLeftCorner }
+        if x > 1 - cornerWidth && y < cornerHeight { return .bottomRightCorner }
         return x < 0.5 ? .leftHalf : .rightHalf
     }
 }

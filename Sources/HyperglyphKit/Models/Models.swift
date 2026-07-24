@@ -279,6 +279,10 @@ public nonisolated struct AppConfig: Codable, Sendable {
     public var multiTapWindow: Double = 0.35
     /// Pressure above which a touch counts as a physical click (disqualifies taps).
     public var clickPressureThreshold: Double = 0.5
+    /// Corner zone width as a fraction of the trackpad (0.15...0.5).
+    public var cornerWidth: Double = 0.30
+    /// Corner zone height as a fraction of the trackpad (0.2...0.5).
+    public var cornerHeight: Double = 0.40
     /// $1 recognizer minimum score (0...1).
     public var matchThreshold: Double = 0.80
 
@@ -307,6 +311,8 @@ public nonisolated struct AppConfig: Codable, Sendable {
         tapMaxMovement = try c.decodeIfPresent(Double.self, forKey: .tapMaxMovement) ?? defaults.tapMaxMovement
         multiTapWindow = try c.decodeIfPresent(Double.self, forKey: .multiTapWindow) ?? defaults.multiTapWindow
         clickPressureThreshold = try c.decodeIfPresent(Double.self, forKey: .clickPressureThreshold) ?? defaults.clickPressureThreshold
+        cornerWidth = try c.decodeIfPresent(Double.self, forKey: .cornerWidth) ?? defaults.cornerWidth
+        cornerHeight = try c.decodeIfPresent(Double.self, forKey: .cornerHeight) ?? defaults.cornerHeight
         matchThreshold = try c.decodeIfPresent(Double.self, forKey: .matchThreshold) ?? defaults.matchThreshold
         hapticsEnabled = try c.decodeIfPresent(Bool.self, forKey: .hapticsEnabled) ?? defaults.hapticsEnabled
         hudEnabled = try c.decodeIfPresent(Bool.self, forKey: .hudEnabled) ?? defaults.hudEnabled

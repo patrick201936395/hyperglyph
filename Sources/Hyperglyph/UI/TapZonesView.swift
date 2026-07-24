@@ -19,6 +19,9 @@ struct TapZonesView: View {
                 diagram
                     .frame(maxWidth: .infinity)
 
+                boundarySliders
+                    .frame(maxWidth: .infinity)
+
                 bindingsSection
 
                 Text("Light taps only — physical clicks and multi-finger touches never trigger zones.")
@@ -32,13 +35,16 @@ struct TapZonesView: View {
 
     // MARK: - Trackpad diagram
 
+    private var cornerWidth: CGFloat { coordinator.config.cornerWidth }
+    private var cornerHeight: CGFloat { coordinator.config.cornerHeight }
+
     private var diagram: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(.quaternary.opacity(0.5))
 
             ForEach(TapZone.allCases) { zone in
-                let shape = TrackpadZoneShape(zone: zone)
+                let shape = TrackpadZoneShape(zone: zone, cornerWidth: cornerWidth, cornerHeight: cornerHeight)
                 shape
                     .fill(zone == selectedZone ? Color.accentColor.opacity(0.22) : Color.clear)
                 shape
@@ -47,20 +53,21 @@ struct TapZonesView: View {
 
             GeometryReader { proxy in
                 ForEach(TapZone.allCases) { zone in
+                    let center = TrackpadZoneShape.labelCenter(
+                        for: zone, cornerWidth: cornerWidth, cornerHeight: cornerHeight
+                    )
                     zoneLabel(zone)
-                        .position(
-                            x: TrackpadZoneShape.labelCenter(for: zone).x * proxy.size.width,
-                            y: TrackpadZoneShape.labelCenter(for: zone).y * proxy.size.height
-                        )
+                        .position(x: center.x * proxy.size.width, y: center.y * proxy.size.height)
                 }
             }
             .allowsHitTesting(false)
 
             // Tap targets on top so labels never swallow clicks.
             ForEach(TapZone.allCases) { zone in
-                TrackpadZoneShape(zone: zone)
+                let shape = TrackpadZoneShape(zone: zone, cornerWidth: cornerWidth, cornerHeight: cornerHeight)
+                shape
                     .fill(Color.clear)
-                    .contentShape(TrackpadZoneShape(zone: zone))
+                    .contentShape(shape)
                     .onTapGesture {
                         withAnimation(.easeOut(duration: 0.15)) {
                             selectedZone = zone
@@ -77,6 +84,41 @@ struct TapZonesView: View {
         )
         .aspectRatio(1.6, contentMode: .fit)
         .frame(maxWidth: 460)
+    }
+
+    /// Live boundary controls — the diagram and the detector share these values.
+    private var boundarySliders: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Corner Width")
+                Slider(value: boundaryBinding(\.cornerWidth), in: 0.15...0.50)
+                    .frame(maxWidth: 260)
+                Text("\(Int((coordinator.config.cornerWidth * 100).rounded()))%")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, alignment: .trailing)
+            }
+            HStack {
+                Text("Corner Height")
+                Slider(value: boundaryBinding(\.cornerHeight), in: 0.20...0.50)
+                    .frame(maxWidth: 260)
+                Text("\(Int((coordinator.config.cornerHeight * 100).rounded()))%")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, alignment: .trailing)
+            }
+            Text("Drag to move the zone boundaries — the diagram above shows exactly what the trackpad will use.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: 460)
+    }
+
+    private func boundaryBinding(_ keyPath: WritableKeyPath<AppConfig, Double>) -> Binding<Double> {
+        Binding(
+            get: { coordinator.config[keyPath: keyPath] },
+            set: { coordinator.config[keyPath: keyPath] = $0 }
+        )
     }
 
     private func zoneLabel(_ zone: TapZone) -> some View {
@@ -270,16 +312,19 @@ struct TapZonesView: View {
 
 /// Draws one tap zone as a polygon inside a unit-normalized trackpad rect.
 ///
-/// Mirrors the detector's y-up geometry exactly — corners are `x < 0.30` / `x > 0.70`
-/// crossed with `y > 0.60` (top) / `y < 0.40` (bottom) — translated to SwiftUI's
-/// y-down space, so `topLeftCorner` renders visually top-left. The two halves are the
-/// leftover T-shaped strips, split at `x = 0.5`.
+/// Mirrors the detector's y-up geometry exactly for the configured corner size —
+/// corners are `x < cornerWidth` / `x > 1-cornerWidth` crossed with the top/bottom
+/// `cornerHeight` bands — translated to SwiftUI's y-down space, so `topLeftCorner`
+/// renders visually top-left. The two halves are the leftover T-shaped strips,
+/// split at `x = 0.5`.
 nonisolated struct TrackpadZoneShape: Shape {
     let zone: TapZone
+    var cornerWidth: CGFloat = 0.30
+    var cornerHeight: CGFloat = 0.40
 
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        let points = Self.normalizedPolygon(for: zone)
+        let points = normalizedPolygon(for: zone)
         guard let first = points.first else { return path }
         path.move(to: Self.scaled(first, in: rect))
         for point in points.dropFirst() {
@@ -297,56 +342,58 @@ nonisolated struct TrackpadZoneShape: Shape {
     }
 
     /// Polygon vertices in normalized SwiftUI coordinates (y-down; visual top is y = 0).
-    private static func normalizedPolygon(for zone: TapZone) -> [CGPoint] {
+    private func normalizedPolygon(for zone: TapZone) -> [CGPoint] {
+        let cw = cornerWidth
+        let ch = cornerHeight
         switch zone {
         case .topLeftCorner:
             return [
-                CGPoint(x: 0.0, y: 0.0), CGPoint(x: 0.3, y: 0.0),
-                CGPoint(x: 0.3, y: 0.4), CGPoint(x: 0.0, y: 0.4),
+                CGPoint(x: 0, y: 0), CGPoint(x: cw, y: 0),
+                CGPoint(x: cw, y: ch), CGPoint(x: 0, y: ch),
             ]
         case .topRightCorner:
             return [
-                CGPoint(x: 0.7, y: 0.0), CGPoint(x: 1.0, y: 0.0),
-                CGPoint(x: 1.0, y: 0.4), CGPoint(x: 0.7, y: 0.4),
+                CGPoint(x: 1 - cw, y: 0), CGPoint(x: 1, y: 0),
+                CGPoint(x: 1, y: ch), CGPoint(x: 1 - cw, y: ch),
             ]
         case .bottomLeftCorner:
             return [
-                CGPoint(x: 0.0, y: 0.6), CGPoint(x: 0.3, y: 0.6),
-                CGPoint(x: 0.3, y: 1.0), CGPoint(x: 0.0, y: 1.0),
+                CGPoint(x: 0, y: 1 - ch), CGPoint(x: cw, y: 1 - ch),
+                CGPoint(x: cw, y: 1), CGPoint(x: 0, y: 1),
             ]
         case .bottomRightCorner:
             return [
-                CGPoint(x: 0.7, y: 0.6), CGPoint(x: 1.0, y: 0.6),
-                CGPoint(x: 1.0, y: 1.0), CGPoint(x: 0.7, y: 1.0),
+                CGPoint(x: 1 - cw, y: 1 - ch), CGPoint(x: 1, y: 1 - ch),
+                CGPoint(x: 1, y: 1), CGPoint(x: 1 - cw, y: 1),
             ]
         case .leftHalf:
             // T-shape rotated left: the middle band on the far left plus the
             // full-height strip between the left corners and the centerline.
             return [
-                CGPoint(x: 0.3, y: 0.0), CGPoint(x: 0.5, y: 0.0),
-                CGPoint(x: 0.5, y: 1.0), CGPoint(x: 0.3, y: 1.0),
-                CGPoint(x: 0.3, y: 0.6), CGPoint(x: 0.0, y: 0.6),
-                CGPoint(x: 0.0, y: 0.4), CGPoint(x: 0.3, y: 0.4),
+                CGPoint(x: cw, y: 0), CGPoint(x: 0.5, y: 0),
+                CGPoint(x: 0.5, y: 1), CGPoint(x: cw, y: 1),
+                CGPoint(x: cw, y: 1 - ch), CGPoint(x: 0, y: 1 - ch),
+                CGPoint(x: 0, y: ch), CGPoint(x: cw, y: ch),
             ]
         case .rightHalf:
             return [
-                CGPoint(x: 0.5, y: 0.0), CGPoint(x: 0.7, y: 0.0),
-                CGPoint(x: 0.7, y: 0.4), CGPoint(x: 1.0, y: 0.4),
-                CGPoint(x: 1.0, y: 0.6), CGPoint(x: 0.7, y: 0.6),
-                CGPoint(x: 0.7, y: 1.0), CGPoint(x: 0.5, y: 1.0),
+                CGPoint(x: 0.5, y: 0), CGPoint(x: 1 - cw, y: 0),
+                CGPoint(x: 1 - cw, y: ch), CGPoint(x: 1, y: ch),
+                CGPoint(x: 1, y: 1 - ch), CGPoint(x: 1 - cw, y: 1 - ch),
+                CGPoint(x: 1 - cw, y: 1), CGPoint(x: 0.5, y: 1),
             ]
         }
     }
 
-    /// Normalized (y-down) anchor for the zone's label.
-    static func labelCenter(for zone: TapZone) -> CGPoint {
+    /// Normalized (y-down) anchor for the zone's label at the given corner geometry.
+    static func labelCenter(for zone: TapZone, cornerWidth: CGFloat, cornerHeight: CGFloat) -> CGPoint {
         switch zone {
-        case .topLeftCorner: return CGPoint(x: 0.15, y: 0.20)
-        case .topRightCorner: return CGPoint(x: 0.85, y: 0.20)
-        case .bottomLeftCorner: return CGPoint(x: 0.15, y: 0.80)
-        case .bottomRightCorner: return CGPoint(x: 0.85, y: 0.80)
-        case .leftHalf: return CGPoint(x: 0.40, y: 0.50)
-        case .rightHalf: return CGPoint(x: 0.60, y: 0.50)
+        case .topLeftCorner: return CGPoint(x: cornerWidth / 2, y: cornerHeight / 2)
+        case .topRightCorner: return CGPoint(x: 1 - cornerWidth / 2, y: cornerHeight / 2)
+        case .bottomLeftCorner: return CGPoint(x: cornerWidth / 2, y: 1 - cornerHeight / 2)
+        case .bottomRightCorner: return CGPoint(x: 1 - cornerWidth / 2, y: 1 - cornerHeight / 2)
+        case .leftHalf: return CGPoint(x: (cornerWidth + 0.5) / 2, y: 0.50)
+        case .rightHalf: return CGPoint(x: (1.5 - cornerWidth) / 2, y: 0.50)
         }
     }
 }

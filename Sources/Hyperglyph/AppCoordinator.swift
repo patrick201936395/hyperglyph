@@ -36,6 +36,11 @@ final class AppCoordinator {
     /// When the current draw stroke started (armed); used to reject slow
     /// scroll-like "flicks" in instant mode.
     private var drawStartedAt: Date?
+
+    /// Opens the main settings window; installed by the SwiftUI scene (which owns
+    /// the `openWindow` environment) so AppKit-side events (Dock/Spotlight/Raycast
+    /// relaunches) can summon the window too.
+    @ObservationIgnored var openMainWindow: (() -> Void)?
     /// True once the current instant-mode stroke has revealed the HUD trail;
     /// keeps the trail sticky for the rest of the stroke.
     private var trailVisibleForCurrentStroke = false
@@ -175,6 +180,8 @@ final class AppCoordinator {
         zoneDetector.tapMaxDuration = config.tapMaxDuration
         zoneDetector.tapMaxMovement = config.tapMaxMovement
         zoneDetector.multiTapWindow = config.multiTapWindow
+        zoneDetector.cornerWidth = config.cornerWidth
+        zoneDetector.cornerHeight = config.cornerHeight
     }
 
     // MARK: - Frame routing
