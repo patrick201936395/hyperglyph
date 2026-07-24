@@ -30,10 +30,22 @@ final class HUDOverlayController {
     /// the still-visible panel, so trail → result feels continuous.
     private static let trailLinger: Duration = .milliseconds(350)
 
+    /// Screen anchor for the pop-up; set from AppConfig by the coordinator.
+    var position: HUDPosition = .bottomCenter
+    /// Visual design of the pop-up; set from AppConfig by the coordinator.
+    var template: HUDTemplate = .glass {
+        didSet { model.template = template }
+    }
+
     private let model = HUDViewModel()
     private var panel: HUDPanel?
     /// Pending hide/dismiss work; cancelled whenever a new presentation begins.
     private var dismissTask: Task<Void, Never>?
+
+    /// Fires a sample pill so Settings can live-preview position/template edits.
+    func showPreview() {
+        showResult(symbol: "C", title: "Preview", systemImage: "sparkles", success: true)
+    }
 
     /// Streams the in-progress stroke to the trail card, presenting the panel on the
     /// first call. Points are normalized 0...1 trackpad coordinates with y-up.
@@ -149,8 +161,8 @@ final class HUDOverlayController {
         return panel
     }
 
-    /// Centers the panel horizontally with its vertical center ~38% up from the bottom of
-    /// the screen containing the mouse pointer (falling back to the main screen).
+    /// Anchors the panel at the configured `position` on the screen containing the
+    /// mouse pointer (falling back to the main screen), clamped to stay on screen.
     private func position(_ panel: NSPanel) {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
@@ -159,15 +171,16 @@ final class HUDOverlayController {
         guard let screen else { return }
 
         let size = Self.panelSize
-        let frame = screen.frame
-        let center = NSPoint(x: frame.midX, y: frame.minY + frame.height * 0.38)
+        let frame = screen.visibleFrame
+        let anchor = position.anchor
+        let center = NSPoint(
+            x: frame.minX + frame.width * anchor.x,
+            y: frame.minY + frame.height * anchor.y
+        )
+        let x = min(max(center.x - size.width / 2, frame.minX), frame.maxX - size.width)
+        let y = min(max(center.y - size.height / 2, frame.minY), frame.maxY - size.height)
         panel.setFrame(
-            NSRect(
-                x: (center.x - size.width / 2).rounded(),
-                y: (center.y - size.height / 2).rounded(),
-                width: size.width,
-                height: size.height
-            ),
+            NSRect(x: x.rounded(), y: y.rounded(), width: size.width, height: size.height),
             display: false
         )
     }
@@ -211,6 +224,7 @@ private final class HUDViewModel {
     /// Normalized 0...1 stroke points, y-up (trackpad orientation).
     var trailPoints: [StrokePoint] = []
     var result: HUDResult?
+    var template: HUDTemplate = .glass
 }
 
 // MARK: - Root view
@@ -230,7 +244,7 @@ private struct HUDRootView: View {
                     .transition(.opacity)
             case .result:
                 if let result = model.result {
-                    ResultPill(result: result)
+                    ResultPill(result: result, template: model.template)
                         .id(result.id)
                         .transition(
                             .asymmetric(
@@ -353,62 +367,89 @@ private struct TrailCard: View {
 
 // MARK: - Result pill
 
-/// Glassy capsule showing the recognized symbol and the action title —
-/// green-ringed on success, muted orange on failure.
+/// The gesture result pop-up, rendered in the user's chosen `HUDTemplate` —
+/// green-tinted on success, muted orange on failure.
 private struct ResultPill: View {
     var result: HUDResult
+    var template: HUDTemplate
 
     private var tint: Color { result.success ? .green : .orange }
 
     var body: some View {
+        switch template {
+        case .glass: glass
+        case .midnight: midnight
+        case .minimal: minimal
+        case .jumbo: jumbo
+        }
+    }
+
+    // MARK: Shared pieces
+
+    /// The recognized-shape glyph in a tinted status ring.
+    private func glyphCircle(diameter: CGFloat, fontSize: CGFloat, ring: Bool = true) -> some View {
+        ZStack {
+            Circle().fill(tint.opacity(0.14))
+            if ring {
+                Circle().strokeBorder(
+                    LinearGradient(
+                        colors: [tint.opacity(0.75), tint.opacity(0.35)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1.5
+                )
+            }
+            Text(result.symbol)
+                .font(.system(size: fontSize, weight: .bold, design: .rounded))
+                .foregroundStyle(result.success ? Color.primary : tint)
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
+                .padding(diameter * 0.12)
+        }
+        .frame(width: diameter, height: diameter)
+    }
+
+    /// The target: app icon, action-type symbol, or (fallback/failure) title text.
+    @ViewBuilder
+    private func target(iconSide: CGFloat, textSize: CGFloat) -> some View {
+        if let icon = result.icon {
+            Image(nsImage: icon)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: iconSide, height: iconSide)
+                .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+        } else if let systemImage = result.systemImage {
+            Image(systemName: systemImage)
+                .font(.system(size: iconSide * 0.55, weight: .semibold))
+                .foregroundStyle(result.success ? Color.primary : Color.secondary)
+                .frame(width: iconSide, height: iconSide)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: iconSide * 0.23, style: .continuous))
+        } else {
+            Text(result.title)
+                .font(.system(size: textSize, weight: .medium, design: .rounded))
+                .foregroundStyle(result.success ? Color.primary : Color.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+    }
+
+    private var arrow: some View {
+        Image(systemName: "arrow.right")
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(.secondary)
+    }
+
+    private var hasTargetGlyph: Bool { result.icon != nil || result.systemImage != nil }
+
+    // MARK: Templates
+
+    /// System-material capsule with a status ring (default).
+    private var glass: some View {
         HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(tint.opacity(0.14))
-                Circle()
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [tint.opacity(0.75), tint.opacity(0.35)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 1.5
-                    )
-                Text(result.symbol)
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(result.success ? Color.primary : tint)
-                    .minimumScaleFactor(0.5)
-                    .lineLimit(1)
-                    .padding(6)
-            }
-            .frame(width: 52, height: 52)
-
-            if result.icon != nil || result.systemImage != nil {
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.secondary)
-            }
-
-            if let icon = result.icon {
-                // The fired app's icon, in place of its name.
-                Image(nsImage: icon)
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: 44, height: 44)
-                    .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
-            } else if let systemImage = result.systemImage {
-                Image(systemName: systemImage)
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(result.success ? Color.primary : Color.secondary)
-                    .frame(width: 44, height: 44)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            } else {
-                Text(result.title)
-                    .font(.system(size: 15, weight: .medium, design: .rounded))
-                    .foregroundStyle(result.success ? Color.primary : Color.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
+            glyphCircle(diameter: 52, fontSize: 28)
+            if hasTargetGlyph { arrow }
+            target(iconSide: 44, textSize: 15)
         }
         .padding(.leading, 12)
         .padding(.trailing, 22)
@@ -416,10 +457,68 @@ private struct ResultPill: View {
         .frame(maxWidth: 420)
         .background(.regularMaterial, in: Capsule(style: .continuous))
         .background(Capsule(style: .continuous).fill(Color.black.opacity(0.2)))
+        .overlay(Capsule(style: .continuous).strokeBorder(Color.white.opacity(0.10), lineWidth: 1))
+        .shadow(color: .black.opacity(0.30), radius: 22, y: 8)
+    }
+
+    /// Opaque near-black card with glowing accents.
+    private var midnight: some View {
+        HStack(spacing: 14) {
+            glyphCircle(diameter: 52, fontSize: 28)
+                .shadow(color: tint.opacity(0.55), radius: 12)
+            if hasTargetGlyph { arrow }
+            target(iconSide: 44, textSize: 15)
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, 24)
+        .padding(.vertical, 14)
+        .frame(maxWidth: 420)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color.black.opacity(0.88))
+        )
         .overlay(
-            Capsule(style: .continuous)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(tint.opacity(0.35), lineWidth: 1)
+        )
+        .shadow(color: tint.opacity(0.25), radius: 26, y: 6)
+    }
+
+    /// Small, quiet, compact pill.
+    private var minimal: some View {
+        HStack(spacing: 8) {
+            Text(result.symbol)
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .foregroundStyle(result.success ? Color.primary : tint)
+            if hasTargetGlyph {
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            target(iconSide: 22, textSize: 12)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .frame(maxWidth: 300)
+        .background(.thinMaterial, in: Capsule(style: .continuous))
+        .overlay(Capsule(style: .continuous).strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+        .shadow(color: .black.opacity(0.20), radius: 10, y: 4)
+    }
+
+    /// Large square card, classic macOS volume-HUD style.
+    private var jumbo: some View {
+        VStack(spacing: 16) {
+            glyphCircle(diameter: 76, fontSize: 40)
+            target(iconSide: 64, textSize: 17)
+        }
+        .padding(28)
+        .frame(width: 190, height: 190)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Color.black.opacity(0.2)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.30), radius: 22, y: 8)
+        .shadow(color: .black.opacity(0.30), radius: 24, y: 8)
     }
 }

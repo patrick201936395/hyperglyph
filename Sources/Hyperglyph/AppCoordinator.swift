@@ -167,6 +167,8 @@ final class AppCoordinator {
     }
 
     private func applyConfig() {
+        hud.position = config.hudPosition
+        hud.template = config.hudTemplate
         drawController.requiresDwell = !config.instantDraw
         drawController.dwellSeconds = config.dwellSeconds
         drawController.stillnessThreshold = config.stillnessThreshold

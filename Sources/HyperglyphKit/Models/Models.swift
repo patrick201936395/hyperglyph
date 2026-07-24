@@ -195,6 +195,65 @@ public nonisolated struct CustomTemplate: Codable, Identifiable, Hashable, Senda
     }
 }
 
+// MARK: - HUD appearance
+
+/// Where the gesture pop-up (trail card + result pill) appears on screen.
+public nonisolated enum HUDPosition: String, Codable, CaseIterable, Identifiable, Sendable {
+    case topLeft, topCenter, topRight
+    case center
+    case bottomLeft, bottomCenter, bottomRight
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .topLeft: return "Top Left"
+        case .topCenter: return "Top Center"
+        case .topRight: return "Top Right"
+        case .center: return "Center"
+        case .bottomLeft: return "Bottom Left"
+        case .bottomCenter: return "Bottom Center"
+        case .bottomRight: return "Bottom Right"
+        }
+    }
+
+    /// Normalized screen anchor (0...1, y-up) for this position.
+    public var anchor: (x: Double, y: Double) {
+        switch self {
+        case .topLeft: return (0.08, 0.85)
+        case .topCenter: return (0.50, 0.85)
+        case .topRight: return (0.92, 0.85)
+        case .center: return (0.50, 0.50)
+        case .bottomLeft: return (0.08, 0.16)
+        case .bottomCenter: return (0.50, 0.16)
+        case .bottomRight: return (0.92, 0.16)
+        }
+    }
+}
+
+/// Visual design of the gesture pop-up.
+public nonisolated enum HUDTemplate: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// System-material capsule with a colored status ring (default).
+    case glass
+    /// Opaque near-black card with glowing accents.
+    case midnight
+    /// Small, quiet, compact pill.
+    case minimal
+    /// Large square center card, classic macOS volume-HUD style.
+    case jumbo
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .glass: return "Glass"
+        case .midnight: return "Midnight"
+        case .minimal: return "Minimal"
+        case .jumbo: return "Jumbo"
+        }
+    }
+}
+
 // MARK: - Config
 
 public nonisolated struct AppConfig: Codable, Sendable {
@@ -225,6 +284,8 @@ public nonisolated struct AppConfig: Codable, Sendable {
 
     public var hapticsEnabled: Bool = true
     public var hudEnabled: Bool = true
+    public var hudPosition: HUDPosition = .bottomCenter
+    public var hudTemplate: HUDTemplate = .glass
     public var launchAtLogin: Bool = false
 
     public init() {}
@@ -249,6 +310,8 @@ public nonisolated struct AppConfig: Codable, Sendable {
         matchThreshold = try c.decodeIfPresent(Double.self, forKey: .matchThreshold) ?? defaults.matchThreshold
         hapticsEnabled = try c.decodeIfPresent(Bool.self, forKey: .hapticsEnabled) ?? defaults.hapticsEnabled
         hudEnabled = try c.decodeIfPresent(Bool.self, forKey: .hudEnabled) ?? defaults.hudEnabled
+        hudPosition = try c.decodeIfPresent(HUDPosition.self, forKey: .hudPosition) ?? defaults.hudPosition
+        hudTemplate = try c.decodeIfPresent(HUDTemplate.self, forKey: .hudTemplate) ?? defaults.hudTemplate
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? defaults.launchAtLogin
     }
 }
