@@ -1,0 +1,15 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Build products
+Hyperglyph.app/
+*.xcodeproj
+*.xcworkspace
+
+# macOS
+.DS_Store
+
+# Xcode user state
+xcuserdata/
+DerivedData/
