@@ -58,6 +58,15 @@ swift test
 
 `build.sh` signs with your Apple Development identity if one exists in your keychain, otherwise it falls back to ad-hoc signing. Ad-hoc signatures change on every build, which resets the macOS Accessibility grant — sign into Xcode → Settings → Accounts once to get a stable identity.
 
+## Pairing with dictation apps (Wispr Flow, Typeless, Superwhisper)
+
+Hyperglyph makes a great push-to-talk trigger. Two patterns, depending on what the app exposes:
+
+- **URL scheme** — Superwhisper supports `superwhisper://record`: bind a gesture to an *Open URL* action with that string and it toggles recording directly.
+- **Hotkey bridge** — Wispr Flow and Typeless are driven by configurable global hotkeys instead. Bind a gesture to a *Keyboard Shortcut* action with a collision-free combo (e.g. `⌃⌥⌘D`), then set the same combo as the app's hands-free/dictation shortcut in its settings. Hyperglyph presses it; the app hears it. Requires Hyperglyph's Accessibility permission.
+
+Example setup: double-tap the left half → `⌃⌥⌘T` → Typeless hands-free; double-tap the right half → `⌃⌥⌘D` → Wispr Flow; the HUD shows the app's icon when it fires.
+
 ## Architecture
 
 The package is split into a reusable engine library and the app:
