@@ -36,6 +36,23 @@ final class AppCoordinator {
     /// When the current draw stroke started (armed); used to reject slow
     /// scroll-like "flicks" in instant mode.
     private var drawStartedAt: Date?
+    /// True once the current instant-mode stroke has revealed the HUD trail;
+    /// keeps the trail sticky for the rest of the stroke.
+    private var trailVisibleForCurrentStroke = false
+
+    /// A stroke "looks like a drawing" once it has covered some ground AND is
+    /// clearly bending — scrolls track nearly straight (straightness ≈ 1), while
+    /// shapes like C or O curve well below it.
+    private static func looksLikeDrawing(_ stroke: [StrokePoint]) -> Bool {
+        guard stroke.count >= 6, let first = stroke.first, let last = stroke.last else { return false }
+        var length = 0.0
+        for i in 1..<stroke.count {
+            length += hypot(stroke[i].x - stroke[i - 1].x, stroke[i].y - stroke[i - 1].y)
+        }
+        guard length > 0.08 else { return false }
+        let straightness = hypot(last.x - first.x, last.y - first.y) / length
+        return straightness < 0.88
+    }
 
     private init() {
         config = configStore.load()
@@ -86,6 +103,7 @@ final class AppCoordinator {
             hud.endTrail()
             state.currentStroke = []
             state.isDrawArmed = false
+            trailVisibleForCurrentStroke = false
         }
     }
 
@@ -123,8 +141,17 @@ final class AppCoordinator {
         drawController.onStrokeUpdate = { [weak self] stroke in
             guard let self else { return }
             state.currentStroke = stroke
-            // No HUD trail in instant mode — it would appear during every scroll.
-            if config.hudEnabled, !config.instantDraw { hud.showTrail(points: stroke) }
+            guard config.hudEnabled else { return }
+            if !config.instantDraw {
+                // Dwell mode: the user deliberately armed, always show the trail.
+                hud.showTrail(points: stroke)
+            } else if trailVisibleForCurrentStroke || Self.looksLikeDrawing(stroke) {
+                // Instant mode: reveal the trail the moment the motion curves like
+                // a shape rather than tracking straight like a scroll — then keep
+                // it up (sticky) for the rest of the stroke.
+                trailVisibleForCurrentStroke = true
+                hud.showTrail(points: stroke)
+            }
         }
         drawController.onStrokeEnded = { [weak self] stroke in
             self?.finishStroke(stroke)
@@ -133,6 +160,7 @@ final class AppCoordinator {
             guard let self else { return }
             state.isDrawArmed = false
             state.currentStroke = []
+            trailVisibleForCurrentStroke = false
             scrollSuppressor.end()
             hud.endTrail()
         }
@@ -166,6 +194,7 @@ final class AppCoordinator {
     private func finishStroke(_ stroke: [StrokePoint]) {
         state.isDrawArmed = false
         state.currentStroke = []
+        trailVisibleForCurrentStroke = false
         scrollSuppressor.end()
         hud.endTrail()
         let drawDuration = drawStartedAt.map { Date().timeIntervalSince($0) }
