@@ -18,7 +18,20 @@ struct ShapeGesturesView: View {
     private static let flickNames: Set<String> = ["Flick Up", "Flick Down", "Flick Left", "Flick Right"]
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            // In-content action row (the window has no toolbar).
+            HStack {
+                Spacer()
+                Button {
+                    isRecorderPresented = true
+                } label: {
+                    Label("Record Custom Shape…", systemImage: "plus.viewfinder")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 4)
+
             if coordinator.config.shapeBindings.isEmpty {
                 ContentUnavailableView(
                     "No Shape Gestures",
@@ -34,17 +47,6 @@ struct ShapeGesturesView: View {
                     }
                     .padding(20)
                 }
-            }
-        }
-        .navigationTitle("Shape Gestures")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    isRecorderPresented = true
-                } label: {
-                    Label("Record Custom Shape…", systemImage: "plus.viewfinder")
-                }
-                .buttonStyle(.borderedProminent)
             }
         }
         .sheet(isPresented: $isRecorderPresented) {

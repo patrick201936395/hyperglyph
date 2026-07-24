@@ -35,44 +35,41 @@ enum MainWindowSection: String, CaseIterable, Identifiable, Hashable {
 
 // MARK: - Main window
 
-/// The app's primary window: a `NavigationSplitView` with a sidebar of pages
-/// (Shapes, Tap Zones, Live View, Settings), a master enable switch in the
-/// toolbar, and a permission banner when Accessibility access is missing.
+/// The app's primary window. Deliberately avoids `NavigationSplitView`,
+/// `NavigationStack`, and `.toolbar` — all three render broken chrome (blank
+/// sidebar, detached toolbar items, dead scrolling) inside this LSUIElement
+/// menu-bar app. Everything here is plain, hand-laid-out SwiftUI: an HStack
+/// of [sidebar column | divider | header + content].
 struct MainWindow: View {
     var coordinator: AppCoordinator
 
     @State private var selection: MainWindowSection = .shapes
-    /// Explicitly pinned so window restoration (e.g. after a force-quit) can
-    /// never bring the window back with the sidebar collapsed.
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        HStack(spacing: 0) {
             sidebar
-        } detail: {
-            detail
+            Divider()
+            contentColumn
         }
+        .frame(minWidth: 760, minHeight: 520)
         .onAppear {
-            columnVisibility = .all
             coordinator.state.accessibilityGranted = ActionRunner.isAccessibilityTrusted
         }
     }
 
     // MARK: Sidebar
 
-    /// Custom-drawn sidebar. `List(selection:)` inside `NavigationSplitView`
-    /// renders blank in this LSUIElement app, so the rows are plain buttons —
-    /// nothing here can fail to draw.
     private var sidebar: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                sidebarGroup("Gestures", [.shapes, .tapZones])
-                sidebarGroup("Monitor", [.liveView])
-                sidebarGroup(nil, [.settings])
-            }
-            .padding(10)
+        VStack(alignment: .leading, spacing: 14) {
+            sidebarGroup("Gestures", [.shapes, .tapZones])
+            sidebarGroup("Monitor", [.liveView])
+            sidebarGroup(nil, [.settings])
+            Spacer()
         }
-        .navigationSplitViewColumnWidth(min: 180, ideal: 200)
+        .padding(10)
+        .padding(.top, 4)
+        .frame(width: 200)
+        .background(Color(nsColor: .underPageBackgroundColor))
     }
 
     @ViewBuilder
@@ -93,47 +90,51 @@ struct MainWindow: View {
         }
     }
 
-    // MARK: Detail
+    // MARK: Content column
 
-    private var detail: some View {
-        NavigationStack {
-            // The banner participates in layout (VStack), never overlaying content.
-            VStack(spacing: 0) {
-                if !coordinator.state.accessibilityGranted {
-                    AccessibilityBanner(coordinator: coordinator)
-                }
+    private var contentColumn: some View {
+        VStack(spacing: 0) {
+            header
+            if !coordinator.state.accessibilityGranted {
+                AccessibilityBanner(coordinator: coordinator)
+            }
+            Group {
                 switch selection {
                 case .shapes:
                     ShapeGesturesView(coordinator: coordinator)
-                        .navigationTitle("Shapes")
                 case .tapZones:
                     TapZonesView(coordinator: coordinator)
-                        .navigationTitle("Tap Zones")
                 case .liveView:
                     LiveView(coordinator: coordinator)
-                        .navigationTitle("Live View")
                 case .settings:
                     SettingsView(coordinator: coordinator)
-                        .navigationTitle("Settings")
                 }
             }
             // Keep rows readable in maximized windows instead of stretching
-            // controls to the screen edge.
-            .frame(maxWidth: 1000)
-            .frame(maxWidth: .infinity)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Toggle("Hyperglyph", isOn: masterEnabledBinding)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .help(
-                            coordinator.state.isEnabled
-                                ? "Hyperglyph is on. Turn off to pause all gestures."
-                                : "Hyperglyph is off. Turn on to resume gestures."
-                        )
-                }
-            }
+            // controls to the screen edge. Live View manages its own width.
+            .frame(maxWidth: selection == .liveView ? .infinity : 1000)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+
+    /// Hand-rolled header: page title on the left, master switch on the right.
+    private var header: some View {
+        HStack(spacing: 12) {
+            Text(selection.title)
+                .font(.title2.weight(.semibold))
+            Spacer()
+            Toggle("Hyperglyph", isOn: masterEnabledBinding)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .help(
+                    coordinator.state.isEnabled
+                        ? "Hyperglyph is on. Turn off to pause all gestures."
+                        : "Hyperglyph is off. Turn on to resume gestures."
+                )
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 14)
+        .padding(.bottom, 10)
     }
 
     /// Master switch: reads live state, writes through the coordinator so
