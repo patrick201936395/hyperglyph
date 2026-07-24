@@ -21,7 +21,23 @@ Draw a `C` with two fingers → launch your editor. Double-tap the left edge →
 - macOS 15+ (Sequoia or later), Apple Silicon or Intel with a Force Touch trackpad
 - Xcode 26+ / Swift 6.2 toolchain to build
 
-## Build & Run
+## Install
+
+### Homebrew
+
+```sh
+brew tap patrick201936395/tap
+brew install hyperglyph     # builds from source (needs Xcode 26+)
+hyperglyph                  # launches the app
+```
+
+Copy it into `/Applications` afterwards for a stable Accessibility grant:
+
+```sh
+cp -R "$(brew --prefix)/opt/hyperglyph/Hyperglyph.app" /Applications/
+```
+
+### From source
 
 ```sh
 git clone https://github.com/patrick201936395/hyperglyph.git
