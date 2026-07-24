@@ -259,7 +259,16 @@ final class AppCoordinator {
 
         if config.hapticsEnabled { haptics.play(.success) }
         let title = "\(result.symbol) → \(action.displayName)"
-        if config.hudEnabled { hud.showResult(symbol: result.symbol, title: action.displayName, success: true) }
+        if config.hudEnabled {
+            let icon = Self.appIcon(for: action)
+            hud.showResult(
+                symbol: result.symbol,
+                title: action.displayName,
+                icon: icon,
+                systemImage: icon == nil ? action.systemImage : nil,
+                success: true
+            )
+        }
         state.pushEvent(GestureEvent(date: Date(), symbol: result.symbol, title: title, success: true))
         flashMenuBar(result.symbol)
         actionRunner.run(action)
@@ -276,10 +285,28 @@ final class AppCoordinator {
         if config.hapticsEnabled { haptics.play(.zone) }
         let symbol = "▣"
         let title = "\(count)× \(zone.displayName) → \(action.displayName)"
-        if config.hudEnabled { hud.showResult(symbol: symbol, title: action.displayName, success: true) }
+        if config.hudEnabled {
+            let icon = Self.appIcon(for: action)
+            hud.showResult(
+                symbol: symbol,
+                title: action.displayName,
+                icon: icon,
+                systemImage: icon == nil ? action.systemImage : nil,
+                success: true
+            )
+        }
         state.pushEvent(GestureEvent(date: Date(), symbol: symbol, title: title, success: true))
         flashMenuBar(symbol)
         actionRunner.run(action)
+    }
+
+    /// The launched app's icon for the HUD pill, or nil for non-app actions
+    /// (which show their SF-symbol type glyph instead).
+    private static func appIcon(for action: GestureAction) -> NSImage? {
+        guard case .launchApp(let bundleID, _) = action,
+              let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+        else { return nil }
+        return NSWorkspace.shared.icon(forFile: url.path)
     }
 
     // MARK: - Menu bar flash

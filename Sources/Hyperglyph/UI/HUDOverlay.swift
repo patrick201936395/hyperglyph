@@ -73,14 +73,24 @@ final class HUDOverlayController {
     /// Shows the transient result pill: springs in, holds ~0.9 s, fades ~0.3 s, then the
     /// panel orders out. Calling again while a pill is pending replaces it and restarts
     /// the timeline.
-    func showResult(symbol: String, title: String, success: Bool) {
+    /// `icon` (an app icon) or `systemImage` (an action-type glyph), when given,
+    /// replace the title text — the pill reads "shape → target icon".
+    func showResult(
+        symbol: String,
+        title: String,
+        icon: NSImage? = nil,
+        systemImage: String? = nil,
+        success: Bool
+    ) {
         dismissTask?.cancel()
         dismissTask = nil
 
         presentPanelIfNeeded()
 
         model.trailPoints = []
-        model.result = HUDResult(symbol: symbol, title: title, success: success)
+        model.result = HUDResult(
+            symbol: symbol, title: title, icon: icon, systemImage: systemImage, success: success
+        )
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
             model.phase = .result
         }
@@ -187,6 +197,10 @@ private struct HUDResult: Identifiable {
     let id = UUID()
     let symbol: String
     let title: String
+    /// App icon shown in place of the title when present.
+    let icon: NSImage?
+    /// SF Symbol shown in place of the title when present (non-app actions).
+    let systemImage: String?
     let success: Bool
 }
 
@@ -369,11 +383,32 @@ private struct ResultPill: View {
             }
             .frame(width: 52, height: 52)
 
-            Text(result.title)
-                .font(.system(size: 15, weight: .medium, design: .rounded))
-                .foregroundStyle(result.success ? Color.primary : Color.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            if result.icon != nil || result.systemImage != nil {
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            if let icon = result.icon {
+                // The fired app's icon, in place of its name.
+                Image(nsImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 44, height: 44)
+                    .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+            } else if let systemImage = result.systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(result.success ? Color.primary : Color.secondary)
+                    .frame(width: 44, height: 44)
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            } else {
+                Text(result.title)
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(result.success ? Color.primary : Color.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
         }
         .padding(.leading, 12)
         .padding(.trailing, 22)
