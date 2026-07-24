@@ -49,11 +49,6 @@ struct MainWindow: View {
         } detail: {
             detail
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if !coordinator.state.accessibilityGranted {
-                AccessibilityBanner(coordinator: coordinator)
-            }
-        }
         .onAppear {
             coordinator.state.accessibilityGranted = ActionRunner.isAccessibilityTrusted
         }
@@ -87,7 +82,11 @@ struct MainWindow: View {
 
     private var detail: some View {
         NavigationStack {
-            Group {
+            // The banner participates in layout (VStack), never overlaying content.
+            VStack(spacing: 0) {
+                if !coordinator.state.accessibilityGranted {
+                    AccessibilityBanner(coordinator: coordinator)
+                }
                 switch selection ?? .shapes {
                 case .shapes:
                     ShapeGesturesView(coordinator: coordinator)
@@ -137,20 +136,27 @@ private struct AccessibilityBanner: View {
     var coordinator: AppCoordinator
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.yellow)
                 .imageScale(.large)
 
-            Text("Accessibility permission needed for keyboard shortcuts and scroll blocking")
-                .font(.callout)
-                .lineLimit(2)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Accessibility permission needed for keyboard shortcuts and scroll blocking")
+                    .font(.callout)
+                Text("Already granted but still seeing this? Rebuilds change the app's signature — in the Accessibility list, remove Hyperglyph (−), re-add it (+), and relaunch.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             Spacer(minLength: 12)
 
-            Button("Grant…") {
+            Button("Open Settings…") {
                 ActionRunner.requestAccessibility()
-                coordinator.state.accessibilityGranted = ActionRunner.isAccessibilityTrusted
+                NSWorkspace.shared.open(
+                    URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+                )
             }
             .controlSize(.small)
         }
@@ -171,7 +177,7 @@ private struct AccessibilityBanner: View {
             // Poll while the banner is visible; the task is cancelled when the
             // banner leaves the hierarchy (i.e. once permission is granted).
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
+                try? await Task.sleep(for: .seconds(1))
                 coordinator.state.accessibilityGranted = ActionRunner.isAccessibilityTrusted
             }
         }
