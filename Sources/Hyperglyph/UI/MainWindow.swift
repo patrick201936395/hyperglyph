@@ -42,14 +42,18 @@ struct MainWindow: View {
     var coordinator: AppCoordinator
 
     @State private var selection: MainWindowSection? = .shapes
+    /// Explicitly pinned so window restoration (e.g. after a force-quit) can
+    /// never bring the window back with the sidebar collapsed.
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
         } detail: {
             detail
         }
         .onAppear {
+            columnVisibility = .all
             coordinator.state.accessibilityGranted = ActionRunner.isAccessibilityTrusted
         }
     }
