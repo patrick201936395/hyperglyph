@@ -41,7 +41,7 @@ enum MainWindowSection: String, CaseIterable, Identifiable, Hashable {
 struct MainWindow: View {
     var coordinator: AppCoordinator
 
-    @State private var selection: MainWindowSection? = .shapes
+    @State private var selection: MainWindowSection = .shapes
     /// Explicitly pinned so window restoration (e.g. after a force-quit) can
     /// never bring the window back with the sidebar collapsed.
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -60,26 +60,37 @@ struct MainWindow: View {
 
     // MARK: Sidebar
 
+    /// Custom-drawn sidebar. `List(selection:)` inside `NavigationSplitView`
+    /// renders blank in this LSUIElement app, so the rows are plain buttons —
+    /// nothing here can fail to draw.
     private var sidebar: some View {
-        List(selection: $selection) {
-            Section("Gestures") {
-                sidebarRow(.shapes)
-                sidebarRow(.tapZones)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                sidebarGroup("Gestures", [.shapes, .tapZones])
+                sidebarGroup("Monitor", [.liveView])
+                sidebarGroup(nil, [.settings])
             }
-            Section("Monitor") {
-                sidebarRow(.liveView)
-            }
-            Section {
-                sidebarRow(.settings)
-            }
+            .padding(10)
         }
-        .listStyle(.sidebar)
         .navigationSplitViewColumnWidth(min: 180, ideal: 200)
     }
 
-    private func sidebarRow(_ section: MainWindowSection) -> some View {
-        Label(section.title, systemImage: section.systemImage)
-            .tag(section)
+    @ViewBuilder
+    private func sidebarGroup(_ title: String?, _ sections: [MainWindowSection]) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if let title {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 2)
+            }
+            ForEach(sections) { section in
+                SidebarRowButton(section: section, isSelected: selection == section) {
+                    selection = section
+                }
+            }
+        }
     }
 
     // MARK: Detail
@@ -91,7 +102,7 @@ struct MainWindow: View {
                 if !coordinator.state.accessibilityGranted {
                     AccessibilityBanner(coordinator: coordinator)
                 }
-                switch selection ?? .shapes {
+                switch selection {
                 case .shapes:
                     ShapeGesturesView(coordinator: coordinator)
                         .navigationTitle("Shapes")
@@ -106,6 +117,10 @@ struct MainWindow: View {
                         .navigationTitle("Settings")
                 }
             }
+            // Keep rows readable in maximized windows instead of stretching
+            // controls to the screen edge.
+            .frame(maxWidth: 1000)
+            .frame(maxWidth: .infinity)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Toggle("Hyperglyph", isOn: masterEnabledBinding)
@@ -128,6 +143,46 @@ struct MainWindow: View {
             get: { coordinator.state.isEnabled },
             set: { coordinator.setEnabled($0) }
         )
+    }
+}
+
+// MARK: - Sidebar row
+
+/// A native-looking sidebar row drawn with plain SwiftUI primitives:
+/// accent-tinted rounded highlight when selected, subtle fill on hover.
+private struct SidebarRowButton: View {
+    let section: MainWindowSection
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: section.systemImage)
+                    .frame(width: 20)
+                    .foregroundStyle(isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(Color.accentColor))
+                Text(section.title)
+                    .foregroundStyle(isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                Spacer(minLength: 0)
+            }
+            .font(.body)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(
+                        isSelected
+                            ? AnyShapeStyle(Color.accentColor)
+                            : isHovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear)
+                    )
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
     }
 }
 

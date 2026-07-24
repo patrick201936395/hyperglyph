@@ -60,6 +60,9 @@ struct MenuBarPanel: View {
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .labelsHidden()
+                // The menu panel is a non-activating window, which dims accent
+                // controls so hard the switch reads as "off" — keep it vivid.
+                .tint(.accentColor)
         }
     }
 
