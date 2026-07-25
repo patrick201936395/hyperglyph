@@ -266,6 +266,7 @@ final class AppCoordinator {
             return // Unreachable: eligibility filtering guarantees a bound action.
         }
 
+        guard actionIsExecutable(action) else { return }
         if config.hapticsEnabled { haptics.play(.success) }
         let title = "\(result.symbol) → \(action.displayName)"
         if config.hudEnabled {
@@ -283,6 +284,25 @@ final class AppCoordinator {
         actionRunner.run(action)
     }
 
+    /// Hotkey actions silently no-op without Accessibility trust — surface that
+    /// loudly instead: fail haptic + an explanatory pop-up, and refresh the
+    /// banner state so the main window shows the grant prompt again.
+    private func actionIsExecutable(_ action: GestureAction) -> Bool {
+        guard case .keyboardShortcut = action, !ActionRunner.isAccessibilityTrusted else {
+            return true
+        }
+        state.accessibilityGranted = false
+        if config.hapticsEnabled { haptics.play(.fail) }
+        if config.hudEnabled {
+            hud.showResult(
+                symbol: "⚠︎",
+                title: "Grant Accessibility to send hotkeys",
+                success: false
+            )
+        }
+        return false
+    }
+
     // MARK: - Zone flow
 
     private func handleZoneTap(zone: TapZone, count: Int) {
@@ -291,6 +311,7 @@ final class AppCoordinator {
             $0.zone == zone && $0.tapCount == count && $0.isEnabled && $0.action != nil
         }), let action = binding.action else { return }
 
+        guard actionIsExecutable(action) else { return }
         if config.hapticsEnabled { haptics.play(.zone) }
         let symbol = "▣"
         let title = "\(count)× \(zone.displayName) → \(action.displayName)"
