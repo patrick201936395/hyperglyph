@@ -155,6 +155,10 @@ public final class ActionRunner {
             Self.logger.error("Skipping hotkey \(hotkey.display, privacy: .public): Accessibility permission not granted")
             return
         }
+        if let chord = hotkey.chordKeyCodes, !chord.isEmpty {
+            postModifierChord(chord, display: hotkey.display)
+            return
+        }
         // Inherits main-actor isolation; the sleep suspends rather than blocks.
         Task {
             let source = CGEventSource(stateID: .hidSystemState)
@@ -171,6 +175,55 @@ public final class ActionRunner {
             keyDown.post(tap: .cghidEventTap)
             try? await Task.sleep(for: .milliseconds(20))
             keyUp.post(tap: .cghidEventTap)
+        }
+    }
+
+    /// Per-modifier-keycode flag contribution: device-independent CGEventFlags mask
+    /// plus the NX device-dependent bit that distinguishes left/right keys.
+    private nonisolated static let modifierKeyFlags: [UInt16: UInt64] = [
+        54: CGEventFlags.maskCommand.rawValue | 0x0010,   // right command
+        55: CGEventFlags.maskCommand.rawValue | 0x0008,   // left command
+        56: CGEventFlags.maskShift.rawValue | 0x0002,     // left shift
+        60: CGEventFlags.maskShift.rawValue | 0x0004,     // right shift
+        58: CGEventFlags.maskAlternate.rawValue | 0x0020, // left option
+        61: CGEventFlags.maskAlternate.rawValue | 0x0040, // right option
+        59: CGEventFlags.maskControl.rawValue | 0x0001,   // left control
+        62: CGEventFlags.maskControl.rawValue | 0x2000,   // right control
+        63: CGEventFlags.maskSecondaryFn.rawValue,        // fn / globe
+    ]
+
+    /// Simulates a modifier-only chord (e.g. Option + Right Shift): presses each
+    /// modifier in recorded order and releases in reverse, as `flagsChanged`
+    /// events with cumulative flags — the shape real modifier presses have, which
+    /// is what apps listening for modifier-chord hotkeys observe.
+    private func postModifierChord(_ chord: [UInt16], display: String) {
+        Task {
+            let source = CGEventSource(stateID: .hidSystemState)
+
+            func post(keyCode: UInt16, down: Bool, flags: UInt64) {
+                guard let event = CGEvent(
+                    keyboardEventSource: source, virtualKey: CGKeyCode(keyCode), keyDown: down
+                ) else {
+                    Self.logger.error("Failed to create chord event for \(display, privacy: .public)")
+                    return
+                }
+                event.type = .flagsChanged
+                event.flags = CGEventFlags(rawValue: flags)
+                event.post(tap: .cghidEventTap)
+            }
+
+            var accumulated: UInt64 = 0
+            for keyCode in chord {
+                accumulated |= Self.modifierKeyFlags[keyCode] ?? 0
+                post(keyCode: keyCode, down: true, flags: accumulated)
+                try? await Task.sleep(for: .milliseconds(15))
+            }
+            try? await Task.sleep(for: .milliseconds(40))
+            for keyCode in chord.reversed() {
+                accumulated &= ~(Self.modifierKeyFlags[keyCode] ?? 0)
+                post(keyCode: keyCode, down: false, flags: accumulated)
+                try? await Task.sleep(for: .milliseconds(15))
+            }
         }
     }
 

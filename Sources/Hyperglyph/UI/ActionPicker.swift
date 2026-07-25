@@ -385,9 +385,11 @@ private struct HotkeyPane: View {
 
 /// A focusable rounded field that records a keyboard shortcut.
 ///
-/// Click to start recording; the field installs a local `.keyDown` NSEvent monitor,
-/// swallows keystrokes while recording, and captures the first key pressed together with
-/// ⌘/⌥/⌃ (or any function key). Esc without modifiers cancels. The monitor is always
+/// Click to start recording; the field installs a local NSEvent monitor for
+/// `.keyDown` + `.flagsChanged`, swallows keystrokes while recording, and captures
+/// either (a) the first key pressed together with ⌘/⌥/⌃ (or any function key), or
+/// (b) a MODIFIER-ONLY chord — hold two or more modifiers (e.g. Option + Right Shift)
+/// and release them all. Esc without modifiers cancels. The monitor is always
 /// removed on capture, cancel, or disappearance.
 struct HotkeyRecorderField: View {
     var hotkey: Hotkey?
@@ -395,6 +397,8 @@ struct HotkeyRecorderField: View {
 
     @State private var isRecording = false
     @State private var eventMonitor: Any?
+    /// Modifier key codes pressed (in order) during the current chord attempt.
+    @State private var chordKeys: [UInt16] = []
 
     var body: some View {
         HStack(spacing: 8) {
@@ -454,9 +458,10 @@ struct HotkeyRecorderField: View {
     private func startRecording() {
         guard eventMonitor == nil else { return }
         isRecording = true
+        chordKeys = []
         // Local monitors deliver on the main thread; the closure inherits main-actor isolation.
-        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            handleKeyDown(event)
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
+            event.type == .flagsChanged ? handleFlagsChanged(event) : handleKeyDown(event)
         }
     }
 
@@ -466,12 +471,52 @@ struct HotkeyRecorderField: View {
         }
         eventMonitor = nil
         isRecording = false
+        chordKeys = []
     }
+
+    /// Modifier keys emit `flagsChanged`, never `keyDown` — this path captures
+    /// modifier-only chords like Option + Right Shift. Presses accumulate; when
+    /// every modifier is released with ≥2 keys collected (and no regular key was
+    /// hit, which would have won via `handleKeyDown`), the chord is committed.
+    private func handleFlagsChanged(_ event: NSEvent) -> NSEvent? {
+        let keyCode = event.keyCode
+        let active = event.modifierFlags.intersection([.command, .option, .control, .shift, .function])
+
+        if Self.modifierDisplayNames[keyCode] != nil, !chordKeys.contains(keyCode),
+           !active.isEmpty {
+            chordKeys.append(keyCode) // A modifier went down.
+        }
+
+        if active.isEmpty { // Everything released: commit or discard.
+            let chord = chordKeys
+            if chord.count >= 2 {
+                let display = chord
+                    .compactMap { Self.modifierDisplayNames[$0] }
+                    .joined(separator: " ")
+                let captured = Hotkey(keyCode: 0, modifiers: 0, display: display, chordKeyCodes: chord)
+                stopRecording()
+                onCapture(captured)
+            } else {
+                chordKeys = [] // Single modifier tap: too accident-prone, ignore.
+            }
+        }
+        return nil
+    }
+
+    /// Modifier key codes → display names, with left/right distinguished.
+    static let modifierDisplayNames: [UInt16: String] = [
+        55: "⌘", 54: "R⌘",
+        56: "⇧", 60: "R⇧",
+        58: "⌥", 61: "R⌥",
+        59: "⌃", 62: "R⌃",
+        63: "🌐",
+    ]
 
     /// Returns `nil` to swallow every keystroke while recording.
     private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let keyCode = event.keyCode
+        chordKeys = [] // A real key ends any modifier-chord attempt.
 
         // Esc without modifiers cancels.
         if keyCode == 53, flags.intersection([.command, .option, .control, .shift]).isEmpty {

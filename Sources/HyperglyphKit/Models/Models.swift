@@ -78,11 +78,17 @@ public nonisolated struct Hotkey: Codable, Hashable, Sendable {
     public var modifiers: UInt64
     /// Human-readable, e.g. "⌘⇧D".
     public var display: String
+    /// When non-nil, this is a MODIFIER-ONLY chord (e.g. Option + Right Shift):
+    /// the modifier key codes in press order. Fired as a flagsChanged press/release
+    /// sequence instead of a normal key tap. `keyCode`/`modifiers` are unused then.
+    /// Optional so configs from older builds keep decoding (missing → nil).
+    public var chordKeyCodes: [UInt16]?
 
-    public init(keyCode: UInt16, modifiers: UInt64, display: String) {
+    public init(keyCode: UInt16, modifiers: UInt64, display: String, chordKeyCodes: [UInt16]? = nil) {
         self.keyCode = keyCode
         self.modifiers = modifiers
         self.display = display
+        self.chordKeyCodes = chordKeyCodes
     }
 }
 
